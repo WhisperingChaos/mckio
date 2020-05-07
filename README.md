@@ -2,3 +2,7 @@
 
 # mckio
 Package mckio offers mock/simulated readers for certain io devices whose rigid OS coupling complicates testing.
+
+### Documentation
+[![GoDoc](https://godoc.org/github.com/WhisperingChaos/mckio?status.svg)](https://godoc.org/github.com/WhisperingChaos/mckio)
+
