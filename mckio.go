@@ -144,7 +144,7 @@ func (m *Rstrings) Read(p []byte) (int, error) {
 }
 
 /*
-NewConsole similulates an io.Reader on os.Stdin.  It implements this
+NewConsole simulates an io.Reader on os.Stdin.  It implements this
 simulation by composing:
 
 - BehaviorDelim - newline deliminter at the end of every string element,
@@ -173,7 +173,7 @@ Rchan converts a channel streaming strings into an io.Reader.
 
 - The reader will return as many residual bytes from the previous
 read before requesting data from the channel.  Therefore, be prepared to
-receive a quantity of bytes less than the length retuested by the
+receive a quantity of bytes less than the length requested by the
 'p []byte' argument.
 
 - Closing the channel returns an io.EOF error.
