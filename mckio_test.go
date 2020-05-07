@@ -169,7 +169,7 @@ func Test_RstringReadBufIntergralOfDelimAndStringSize(t *testing.T) {
 	assrt.Equal(expct, rslt)
 	// above should have consumed the entire list of strings
 	// another read should cause block.
-	// rdr.Read(p)
+	rdr.Read(p)
 }
 
 type delimAdd struct {
