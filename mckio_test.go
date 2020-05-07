@@ -147,7 +147,7 @@ func Test_RstringConsole(t *testing.T) {
 	}
 	// above should have consumed the entire list of strings
 	// another read should cause block.
-	rdr.Read(p)
+	// rdr.Read(p)
 }
 func Test_RstringReadBufIntergralOfDelimAndStringSize(t *testing.T) {
 	assrt := assert.New(t)
