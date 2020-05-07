@@ -147,7 +147,7 @@ func Test_RstringConsole(t *testing.T) {
 	}
 	// above should have consumed the entire list of strings
 	// another read should cause block.
-	// rdr.Read(p)
+	rdr.Read(p)
 }
 func Test_RstringReadBufIntergralOfDelimAndStringSize(t *testing.T) {
 	assrt := assert.New(t)
@@ -170,6 +170,9 @@ func Test_RstringReadBufIntergralOfDelimAndStringSize(t *testing.T) {
 	// above should have consumed the entire list of strings
 	// another read should cause block.
 	rdr.Read(p)
+	sz, err := rdr.Read(p)
+	assrt.Zero(sz)
+	assrt.IsType(io.EOF, err)
 }
 
 type delimAdd struct {
