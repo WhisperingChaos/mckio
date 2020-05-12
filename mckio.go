@@ -4,8 +4,13 @@ Package mckio offers mock/simulated readers for certain io devices whose rigid O
 package mckio
 
 import (
+	"bytes"
+	"fmt"
 	"io"
+	"os"
 	"time"
+
+	"github.com/WhisperingChaos/bus"
 )
 
 /*
@@ -228,6 +233,60 @@ func (rc *Rchan) Read(p []byte) (int, error) {
 		}
 		rc.spos = 0
 	}
+}
+
+func FileCaptureStart(osf **os.File) (output <-chan string, captureEnd func()) {
+	// control bus signals stop capturing output.  caller participates as
+	// sender on control bus. Caller only has to send end capture signal
+	// to this receiver (capture agent) that's redirecting file output.
+	var capCtrl bus.B
+	_, captureEnd, _ = capCtrl.SenderConnect()
+	endCapture := capCtrl.ShutdownMonitor()
+	// data bus delivers captured output to caller. caller participates as
+	// receiver while this capture agent performs role as sender.
+	var capOut bus.B
+	pipeSender, dscnnt, _ := capOut.SenderConnect()
+	// pipeSender has to observe 'itself' to ensures it
+	// finishes sending before closing its pipe and
+	// restoring file.
+	shutdown := capOut.ShutdownMonitor()
+	rdr, wrt, err := os.Pipe()
+	if err != nil {
+		panic("broken pipe")
+	}
+	*osf = wrt
+	go wfilePipe(osf, *osf, rdr, wrt, pipeSender, dscnnt, endCapture, shutdown)
+	out := make(chan string)
+	go cvrtToStringChan(capOut.ReceiverConnect(), out)
+	return out, captureEnd
+}
+func wfilePipe(osf **os.File, file *os.File, rdr *os.File, wrt *os.File, sender chan<- interface{}, dscnnt func(), endCapture <-chan struct{}, shutdown <-chan struct{}) {
+	go wfileCapture(rdr, sender, dscnnt)
+	// caller receiving capture output requests stop
+	<-endCapture
+	// close write end of pipe which eventually signals
+	// end of file on the pipe's read side.
+	wrt.Close()
+	*osf = file
+	fmt.Fprintf(os.Stderr, "after close\n")
+	// wait till pipe reader finishes sending captured output
+	<-shutdown
+	rdr.Close()
+}
+func wfileCapture(rdr *os.File, capture chan<- interface{}, dscnnt func()) {
+	defer dscnnt()
+	var buf bytes.Buffer
+	io.Copy(&buf, rdr)
+	fmt.Fprintf(os.Stderr, "after copy\n")
+	capture <- buf.String()
+	fmt.Fprintf(os.Stderr, "capture done\n")
+}
+func cvrtToStringChan(in <-chan interface{}, outstr chan<- string) {
+	defer close(outstr)
+	for o := range in {
+		outstr <- o.(string)
+	}
+	fmt.Fprintf(os.Stderr, "convert done\n")
 }
 
 //-----------------------------------------------------------------------------

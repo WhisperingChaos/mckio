@@ -1,7 +1,9 @@
 package mckio
 
 import (
+	"fmt"
 	"io"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -180,4 +182,31 @@ type delimAdd struct {
 
 func (delimAdd) BehaviorDelim() (delims []byte) {
 	return []byte{'\n'}
+}
+func Test_FileCaptureStartImmediateEnd(t *testing.T) {
+	assrt := assert.New(t)
+	var captFile *os.File
+	output, captureEnd := FileCaptureStart(&captFile)
+	assrt.NotNil(output)
+	assrt.NotNil(captureEnd)
+	captureEnd()
+	<-output
+}
+func Test_FileCaptureStdoutSimple(t *testing.T) {
+	assrt := assert.New(t)
+	rep := os.Stdout
+	output, captureEnd := FileCaptureStart(&os.Stdout)
+
+	assrt.NotNil(output)
+	assrt.NotNil(captureEnd)
+	fmt.Println("captured1 dsafklsadfjsadlfk dsfjksaldf;sajdfld fsakdlfjsadlkf dsjkflsa;dfjsadlfk df")
+	captureEnd()
+	cap := <-output
+	<-output
+	os.Stdout = rep
+	fmt.Println("Hello " + cap)
+	fmt.Println("Hello " + cap)
+	fmt.Println("Hello " + cap)
+	fmt.Println("Hello " + cap)
+
 }
