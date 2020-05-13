@@ -5,7 +5,6 @@ package mckio
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"os"
 	"time"
@@ -235,63 +234,103 @@ func (rc *Rchan) Read(p []byte) (int, error) {
 	}
 }
 
-func FileCaptureStart(osf **os.File) (output <-chan string, captureEnd func()) {
+/*
+FileCaptureStart redirects and captures write operations targeted to a
+file.  The content of these write operations are buffered in memory
+until the caller signals the recording process to terminate.  Once terminated,
+the buffered content becomes available as a single string via a channel.
+
+Motivation
+
+ - Capture output written to os.Stdout or os.Stderr during testing when the
+targeted code lacks a writer interface.
+
+ Note
+
+- Not concurrency safe.
+
+- Do not attempt to read from this file while its being captured.
+*/
+func FileCaptureStart(
+	osf **os.File, // provide address to variable containing pointer to os.file.
+) (
+	output <-chan string, // output content of all write operations as string.
+	captureEnd func(), // execute this function to terminate capturing and revert variable to its original value.
+	err error,
+) {
 	// control bus signals stop capturing output.  caller participates as
-	// sender on control bus. Caller only has to send end capture signal
-	// to this receiver (capture agent) that's redirecting file output.
+	// sender on control bus. caller uses returned function to send
+	// capture end signal to this receiver (capture agent) that's
+	// redirecting file output.
 	var capCtrl bus.B
-	_, captureEnd, _ = capCtrl.SenderConnect()
-	endCapture := capCtrl.ShutdownMonitor()
+	stopCapture, captureStop, _ := capCtrl.SenderConnect()
+	captureEnd = ctrlCapture(stopCapture, captureStop)
+	endCapture := capCtrl.ReceiverConnect()
 	// data bus delivers captured output to caller. caller participates as
 	// receiver while this capture agent performs role as sender.
 	var capOut bus.B
 	pipeSender, dscnnt, _ := capOut.SenderConnect()
-	// pipeSender has to observe 'itself' to ensures it
-	// finishes sending before closing its pipe and
-	// restoring file.
-	shutdown := capOut.ShutdownMonitor()
-	rdr, wrt, err := os.Pipe()
-	if err != nil {
-		panic("broken pipe")
+	rdr, wrt, errp := os.Pipe()
+	if errp != nil {
+		return nil, nil, errp
 	}
+	file := *osf
+	// overwrite memory location holding pointer to file structure.
+	// represents race condition especially if caller shares
+	// the memory location with other concurrent language features and doesn't
+	// apply a mechanism to protect it.  the replacement below occurs in the
+	// same concurrent unit of the caller, so statements that follow this
+	// function's invocation should be affected by the change.
 	*osf = wrt
-	go wfilePipe(osf, *osf, rdr, wrt, pipeSender, dscnnt, endCapture, shutdown)
+	go wfilePipe(osf, file, rdr, wrt, pipeSender, dscnnt, endCapture)
 	out := make(chan string)
 	go cvrtToStringChan(capOut.ReceiverConnect(), out)
-	return out, captureEnd
+	return out, captureEnd, nil
 }
-func wfilePipe(osf **os.File, file *os.File, rdr *os.File, wrt *os.File, sender chan<- interface{}, dscnnt func(), endCapture <-chan struct{}, shutdown <-chan struct{}) {
+
+//-----------------------------------------------------------------------------
+//--                         Private Section                                ---
+//-----------------------------------------------------------------------------
+func ctrlCapture(stopCapture chan<- interface{}, busDscnnt func()) (captureEnd func()) {
+	return func() {
+		// prevent premature close of pipe
+		stopCapture <- true
+		// ensure pipe closed & os.file reverted before returning from this function.
+		stopCapture <- true
+		// disconnect from control bus
+		busDscnnt()
+	}
+}
+func wfilePipe(osf **os.File, file *os.File, rdr *os.File, wrt *os.File, sender chan<- interface{}, dscnnt func(), endCapture <-chan interface{}) {
 	go wfileCapture(rdr, sender, dscnnt)
-	// caller receiving capture output requests stop
+	// caller receiving capture output issues request to stop
+	// its recording.
 	<-endCapture
 	// close write end of pipe which eventually signals
 	// end of file on the pipe's read side.
 	wrt.Close()
 	*osf = file
-	fmt.Fprintf(os.Stderr, "after close\n")
-	// wait till pipe reader finishes sending captured output
-	<-shutdown
-	rdr.Close()
+	// ensure above occurs before end capture closure terminates - happens before.
+	<-endCapture
 }
 func wfileCapture(rdr *os.File, capture chan<- interface{}, dscnnt func()) {
 	defer dscnnt()
 	var buf bytes.Buffer
-	io.Copy(&buf, rdr)
-	fmt.Fprintf(os.Stderr, "after copy\n")
-	capture <- buf.String()
-	fmt.Fprintf(os.Stderr, "capture done\n")
+	sz, err := io.Copy(&buf, rdr)
+	if err != nil {
+		panic(err)
+	}
+	rdr.Close()
+	if sz > 0 {
+		capture <- buf.String()
+	}
 }
 func cvrtToStringChan(in <-chan interface{}, outstr chan<- string) {
 	defer close(outstr)
 	for o := range in {
 		outstr <- o.(string)
 	}
-	fmt.Fprintf(os.Stderr, "convert done\n")
 }
-
-//-----------------------------------------------------------------------------
-//--                         Private Section                                ---
-//-----------------------------------------------------------------------------
 
 type stdin struct{}
 
