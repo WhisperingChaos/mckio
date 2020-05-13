@@ -186,27 +186,24 @@ func (delimAdd) BehaviorDelim() (delims []byte) {
 func Test_FileCaptureStartImmediateEnd(t *testing.T) {
 	assrt := assert.New(t)
 	var captFile *os.File
-	output, captureEnd := FileCaptureStart(&captFile)
+	output, captureEnd, err := FileCaptureStart(&captFile)
 	assrt.NotNil(output)
 	assrt.NotNil(captureEnd)
+	assrt.Nil(err)
 	captureEnd()
-	<-output
+	_, ok := <-output
+	assrt.False(ok)
 }
 func Test_FileCaptureStdoutSimple(t *testing.T) {
 	assrt := assert.New(t)
-	rep := os.Stdout
-	output, captureEnd := FileCaptureStart(&os.Stdout)
-
+	output, captureEnd, err := FileCaptureStart(&os.Stdout)
 	assrt.NotNil(output)
 	assrt.NotNil(captureEnd)
-	fmt.Println("captured1 dsafklsadfjsadlfk dsfjksaldf;sajdfld fsakdlfjsadlkf dsjkflsa;dfjsadlfk df")
+	assrt.Nil(err)
+	stdMsg := "captured os.Stdout"
+	fmt.Print(stdMsg)
 	captureEnd()
 	cap := <-output
 	<-output
-	os.Stdout = rep
-	fmt.Println("Hello " + cap)
-	fmt.Println("Hello " + cap)
-	fmt.Println("Hello " + cap)
-	fmt.Println("Hello " + cap)
-
+	assrt.Equal(stdMsg, cap)
 }
